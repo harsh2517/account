@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    match /companies/{companyId} {
+      allow get, list: if isSignedIn() && isOwner(companyId);
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && isOwner(companyId);
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(companyId) {
+      return get(/databases/$(database)/documents/companies/$(companyId)).data.createdBy == request.auth.uid;
+    }
+  }
+}

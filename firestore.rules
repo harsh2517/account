@@ -1,0 +1,74 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isCompanyMember(companyId) {
+      return exists(/databases/$(database)/documents/companyMembers/$(companyId + "_" + request.auth.uid));
+    }
+
+    function hasPageAccess(companyId, pageName) {
+      let membership = get(/databases/$(database)/documents/companyMembers/$(companyId + "_" + request.auth.uid));
+      return membership.exists && membership.data.allowedPages.hasAny([pageName]);
+    }
+
+    function canAccessDoc(companyId, featureName) {
+      return isSignedIn() && isCompanyMember(companyId) && hasPageAccess(companyId, featureName);
+    }
+
+    match /companies/{companyId} {
+      allow read: if isCompanyMember(companyId);
+      allow update, delete: if resource.data.createdBy == request.auth.uid;
+      allow create: if isSignedIn();
+    }
+
+    match /companyMembers/{membershipId} {
+      allow read, write: if resource.data.addedBy == request.auth.uid;
+    }
+    
+    match /chartOfAccounts/{docId} {
+      allow read, write: if canAccessDoc(resource.data.companyId, "chart-of-accounts");
+    }
+
+    match /transactions/{docId} {
+      allow read, write: if canAccessDoc(resource.data.companyId, "bank-transactions");
+    }
+
+    match /historicalReferenceData/{docId} {
+      allow read, write: if canAccessDoc(resource.data.companyId, "historical-reference-data");
+    }
+
+    match /all_transactions_ledger/{docId} {
+      allow read, write: if canAccessDoc(resource.data.companyId, "all-transactions-ledger");
+    }
+
+    match /contacts/{docId} {
+      allow read, write: if canAccessDoc(resource.data.companyId, "contacts");
+    }
+
+    match /sales_invoices/{docId} {
+      allow read, write: if canAccessDoc(resource.data.companyId, "sales-invoices");
+    }
+
+    match /purchase_bills/{docId} {
+      allow read, write: if canAccessDoc(resource.data.companyId, "purchases-bills");
+    }
+
+    match /journal_entry_lines/{docId} {
+      allow read, write: if canAccessDoc(resource.data.companyId, "journal-entry");
+    }
+
+    match /userDisplayPreferences/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isCompanyMember(resource.data.companyId);
+      allow create: if isCompanyMember(request.resource.data.companyId);
+    }
+  }
+}

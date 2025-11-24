@@ -1,0 +1,95 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isMember(companyData) {
+      return request.auth.uid in companyData.memberIds;
+    }
+
+    // User Profiles can be read by anyone, but only the owner can write.
+    match /userProfiles/{userId} {
+      allow read, update, delete: if isAuthenticated() && isOwner(userId);
+      allow create: if isAuthenticated();
+
+      // A user can manage companies they own or are members of
+      match /companies/{companyId} {
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated() && isOwner(resource.data.ownerId);
+        allow read: if isAuthenticated() && (
+          isOwner(resource.data.ownerId) || 
+          isMember(resource.data)
+        );
+
+        // Explicit rules for subcollections
+        match /{subcollection}/{document} {
+          allow read: if isAuthenticated() && (
+            isOwner(userId) || 
+            isMember(get(/databases/$(database)/documents/userProfiles/$(userId)/companies/$(companyId)).data
+          );
+          allow write: if isAuthenticated() && isOwner(userId);
+        }
+      }
+
+      // A user can see the companies shared with them
+      match /sharedWithMe/{companyId} {
+        allow read, write, delete: if isAuthenticated() && isOwner(userId);
+      }
+    }
+
+    // Default deny all other collections at the root level
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+//updated sync with firestore console rules 
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    match /userProfiles/{userId} {
+      allow read, update, delete: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated();
+
+      match /companies/{companyId} {
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.ownerId;
+        allow read: if isAuthenticated() && (
+          request.auth.uid == resource.data.ownerId ||
+          request.auth.uid in resource.data.memberIds
+        );
+      }
+
+      match /sharedWithMe/{companyId} {
+        allow read, write, delete: if isAuthenticated() && request.auth.uid == userId;
+      }
+    }
+
+    match /userProfiles/{userId}/{collection}/{docId} {
+      allow read, write, delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+}
